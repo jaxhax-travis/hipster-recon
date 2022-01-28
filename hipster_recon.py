@@ -110,6 +110,8 @@ def normalize_dataset(dataset: list) -> list:
                         new_item.append("")
                 else:
                     new_item = item.copy()
+                    while len(new_item) < max_array_count:
+                        new_item.append("")
                 new_row.append(new_item)
         else:
             for item in row:
@@ -202,35 +204,68 @@ def draw_table(title: str, dataset: list) -> None:
 ########################################################################
 #                 WHOIS AND CERT ENUMERATION FUNCTIONS
 ########################################################################
+def extract_arin_org_name(record: dict) -> str:
+    """
+    Attempts to extract the customer name or org name from the record. If
+    this isn't possible, it will return an empty string.
+    """
+    org_name = ""
+    if 'customerRef' in record and '@name' in record['customerRef']:
+        org_name = record['customerRef']['@name']
+        if '@handle' in record['customerRef']:
+            org_name += f" ({record['customerRef']['@handle']})"
+    elif 'orgRef' in record:
+        org_name = record['orgRef']['@name']
+    return org_name
+
+def extract_arin_netblocks(netblock: dict) -> str:
+    """
+    Attempts to extract the customer name or org name from the record. If
+    this isn't possible, it will return an empty string.
+    """
+    if isinstance(netblock, list):
+        start_ip = []
+        end_ip = []
+        cidr = []
+        for row in netblock:
+            start_ip.append(row['startAddress']['$'])
+            end_ip.append(row['endAddress']['$'])
+            cidr.append(f"{row['startAddress']['$']}/{row['cidrLength']['$']}")
+    else:
+        start_ip = netblock['startAddress']['$']
+        end_ip = netblock['endAddress']['$']
+        cidr = f"{start_ip}/{netblock['cidrLength']['$']}"
+    return (start_ip, end_ip, cidr)
+
 def get_arin_info(ip_addr: str) -> None:
     """ Query the ARIN for IP information. """
     records = [["CIDR", "Start", "End", "Organization"]]
-    url = f"https://whois.arin.net/rest/nets;q={ip_addr}?showDetails=true&showARIN=true"
+    url = f"http://whois.arin.net/rest/nets;q={ip_addr}?showDetails=true&showARIN=true"
     headers = {"Accept": "application/json"}
     res = requests.get(url, headers=headers)
     if res.status_code == 200:
         data = res.json()['nets']['net']
         if isinstance(data, dict):
-            org_name = data['orgRef']['@name']
-            start_ip = data['netBlocks']['netBlock']['startAddress']['$']
-            end_ip = data['netBlocks']['netBlock']['endAddress']['$']
-            cidr = f"{start_ip}/{data['netBlocks']['netBlock']['cidrLength']['$']}"
+            org_name = extract_arin_org_name(record)
+            netblock = record['netBlocks']['netBlock']
+            start_ip, end_ip, cidr = extract_arin_netblocks(netblock)
             records.append([cidr, start_ip, end_ip, org_name])
         else:
             for record in data:
-                org_name = record['orgRef']['@name']
-                start_ip = record['netBlocks']['netBlock']['startAddress']['$']
-                end_ip = record['netBlocks']['netBlock']['endAddress']['$']
-                cidr = f"{start_ip}/{record['netBlocks']['netBlock']['cidrLength']['$']}"
+                org_name = extract_arin_org_name(record)
+                netblock = record['netBlocks']['netBlock']
+                start_ip, end_ip, cidr = extract_arin_netblocks(netblock)
                 records.append([cidr, start_ip, end_ip, org_name])
     draw_table("ARIN Records", records)
 
 def get_ssl_cert(host: str, port: int) -> x509.Certificate:
     """ Connect and get cert information. """
-    ssl_info = ssl.get_server_certificate((host, port))
-    #print(ssl_info)
-    cert = x509.load_pem_x509_certificate(ssl_info.encode('utf-8'))
-    return cert
+    try:
+        ssl_info = ssl.get_server_certificate((host, port))
+        cert = x509.load_pem_x509_certificate(ssl_info.encode('utf-8'))
+        return cert
+    except ConnectionResetError:
+        return None
 
 def get_common_name(cert: x509.Certificate) -> str:
     """ Get the common name from a X509 cert. """
@@ -339,12 +374,14 @@ def main() -> int:
         for host, ports in scanner.results.items():
             for port in ports:
                 cert = get_ssl_cert(host, port)
-                certs.append([f"{host}:{port}",
-                              get_issuer(cert),
-                              get_common_name(cert),
-                              get_alternatives_names(cert)])
-                print(f" [*] {len(certs)-1} SSL certs obtained!")
-        draw_table("SSL Certificates", certs)
+                if cert:
+                    certs.append([f"{host}:{port}",
+                                  get_issuer(cert),
+                                  get_common_name(cert),
+                                  get_alternatives_names(cert)])
+            print(f" [*] {len(certs)-1} SSL certs obtained!")
+        if len(certs) > 1:
+            draw_table("SSL Certificates", certs)
     return 0
 
 if __name__ == "__main__":
