@@ -240,7 +240,7 @@ def extract_arin_netblocks(netblock: dict) -> str:
 def get_arin_info(ip_addr: str) -> None:
     """ Query the ARIN for IP information. """
     records = [["CIDR", "Start", "End", "Organization"]]
-    url = f"http://whois.arin.net/rest/nets;q={ip_addr}?showDetails=true&showARIN=true"
+    url = f"https://whois.arin.net/rest/nets;q={ip_addr}?showDetails=true&showARIN=true"
     headers = {"Accept": "application/json"}
     res = requests.get(url, headers=headers)
     if res.status_code == 200:
