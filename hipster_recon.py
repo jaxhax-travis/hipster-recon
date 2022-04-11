@@ -246,8 +246,8 @@ def get_arin_info(ip_addr: str) -> None:
     if res.status_code == 200:
         data = res.json()['nets']['net']
         if isinstance(data, dict):
-            org_name = extract_arin_org_name(record)
-            netblock = record['netBlocks']['netBlock']
+            org_name = extract_arin_org_name(data)
+            netblock = data['netBlocks']['netBlock']
             start_ip, end_ip, cidr = extract_arin_netblocks(netblock)
             records.append([cidr, start_ip, end_ip, org_name])
         else:
@@ -273,7 +273,7 @@ def get_common_name(cert: x509.Certificate) -> str:
         names = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
         return names[0].value
     except x509.ExtensionNotFound:
-        return None
+        return ""
 
 def get_alternatives_names(cert: x509.Certificate) -> list:
     """ Get the alternative names as a list from a X509 cert. """
@@ -281,7 +281,7 @@ def get_alternatives_names(cert: x509.Certificate) -> list:
         ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
         return ext.value.get_values_for_type(x509.DNSName)
     except x509.ExtensionNotFound:
-        return None
+        return [""]
 
 def get_issuer(cert: x509.Certificate) -> str:
     """ Get the alternative names as a list from a X509 cert. """
@@ -289,7 +289,7 @@ def get_issuer(cert: x509.Certificate) -> str:
         names = cert.issuer.get_attributes_for_oid(NameOID.COMMON_NAME)
         return names[0].value
     except x509.ExtensionNotFound:
-        return None
+        return ""
 
 ########################################################################
 #                 ARG PARSER & MISC FUNCTIONS
